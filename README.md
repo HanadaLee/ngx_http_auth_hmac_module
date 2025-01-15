@@ -1,10 +1,10 @@
-Nginx HMAC Secure Link Module
+Nginx Secure Link HMAC Module
 =============================
 
 Description:
 ============
 
-The Nginx HMAC secure link module enhances the security and functionality of the standard secure link module.  
+The Nginx secure link HMAC module enhances the security and functionality of the standard secure link module.  
 Secure token is created using secure HMAC construction with an arbitrary hash algorithm supported by OpenSSL, e.g.:
 `blake2b512`, `blake2s256`, `gost`, `md4`, `md5`, `mdc2`, `rmd160`, `sha1`, `sha224`, `sha256`,
 `sha3-224`, `sha3-256`, `sha3-384`, `sha3-512`, `sha384`, `sha512`, `sha512-224`, `sha512-256`, `shake128`, `shake256`, `sm3`.
@@ -20,11 +20,11 @@ Modify your compile of Nginx by adding the following directive (modified to suit
 
 Static module (built-in nginx binary)
 
-    ./configure --add-module=/absolute/path/to/ngx_http_hmac_secure_link_module
+    ./configure --add-module=/absolute/path/to/ngx_http_secure_link_hmac_module
 
-Dynamic nginx module `ngx_http_hmac_secure_link_module.so` module
+Dynamic nginx module `ngx_http_secure_link_hmac_module.so` module
 
-    ./configure --with-compat --add-dynamic-module=/absolute/path/to/ngx_http_hmac_secure_link_module
+    ./configure --with-compat --add-dynamic-module=/absolute/path/to/ngx_http_secure_link_hmac_module
 
 Build Nginx
 
@@ -168,6 +168,6 @@ Embedded Variables
 Contributing:
 =============
 
-Git source repositories: http://github.com/nginx-modules/ngx_http_hmac_secure_link_module/tree/master
+Git source repositories: http://github.com/hanadalee/ngx_http_secure_link_hmac_module/tree/master
 
 Please feel free to fork the project at GitHub and submit pull requests or patches.

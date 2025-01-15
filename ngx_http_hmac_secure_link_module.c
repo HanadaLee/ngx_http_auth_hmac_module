@@ -7,68 +7,68 @@
 #include <openssl/hmac.h>
 #include <openssl/crypto.h>
 
-#define NGX_DEFAULT_HASH_FUNCTION  "sha256"
+#define NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH  "sha256"
 
 typedef struct {
     ngx_http_complex_value_t  *hmac_variable;
     ngx_http_complex_value_t  *hmac_message;
     ngx_http_complex_value_t  *hmac_secret;
     ngx_str_t                  hmac_algorithm;
-} ngx_http_secure_link_conf_t;
+} ngx_http_secure_link_hmac_conf_t;
 
 
 typedef struct {
     ngx_str_t                  expires;
-} ngx_http_secure_link_ctx_t;
+} ngx_http_secure_link_hmac_ctx_t;
 
-static ngx_int_t ngx_http_secure_link_variable(ngx_http_request_t *r,
+static ngx_int_t ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
-static ngx_int_t ngx_http_secure_link_expires_variable(ngx_http_request_t *r,
+static ngx_int_t ngx_http_secure_link_hmac_expires_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
-static ngx_int_t ngx_http_secure_link_token_variable(ngx_http_request_t *r,
+static ngx_int_t ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
-static void *ngx_http_secure_link_create_conf(ngx_conf_t *cf);
-static char *ngx_http_secure_link_merge_conf(ngx_conf_t *cf, void *parent,
+static void *ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf);
+static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
-static ngx_int_t ngx_http_secure_link_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf);
 
 
-static ngx_command_t  ngx_http_hmac_secure_link_commands[] = {
+static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
 
     { ngx_string("secure_link_hmac"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_conf_t, hmac_variable),
+      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_variable),
       NULL },
 
     { ngx_string("secure_link_hmac_message"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_conf_t, hmac_message),
+      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_message),
       NULL },
 
     { ngx_string("secure_link_hmac_secret"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_conf_t, hmac_secret),
+      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_secret),
       NULL },
 
     { ngx_string("secure_link_hmac_algorithm"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_conf_t, hmac_algorithm),
+      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_algorithm),
       NULL },
 
       ngx_null_command
 };
 
 
-static ngx_http_module_t  ngx_http_secure_link_module_ctx = {
-    ngx_http_secure_link_add_variables,    /* preconfiguration */
+static ngx_http_module_t  ngx_http_secure_link_hmac_module_ctx = {
+    ngx_http_secure_link_hmac_add_variables,    /* preconfiguration */
     NULL,                                  /* postconfiguration */
 
     NULL,                                  /* create main configuration */
@@ -77,15 +77,15 @@ static ngx_http_module_t  ngx_http_secure_link_module_ctx = {
     NULL,                                  /* create server configuration */
     NULL,                                  /* merge server configuration */
 
-    ngx_http_secure_link_create_conf,      /* create location configuration */
-    ngx_http_secure_link_merge_conf        /* merge location configuration */
+    ngx_http_secure_link_hmac_create_conf,      /* create location configuration */
+    ngx_http_secure_link_hmac_merge_conf        /* merge location configuration */
 };
 
 
-ngx_module_t  ngx_http_hmac_secure_link_module = {
+ngx_module_t  ngx_http_secure_link_hmac_module = {
     NGX_MODULE_V1,
-    &ngx_http_secure_link_module_ctx,      /* module context */
-    ngx_http_hmac_secure_link_commands,    /* module directives */
+    &ngx_http_secure_link_hmac_module_ctx,      /* module context */
+    ngx_http_secure_link_hmac_commands,    /* module directives */
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
     NULL,                                  /* init module */
@@ -98,26 +98,26 @@ ngx_module_t  ngx_http_hmac_secure_link_module = {
 };
 
 
-static ngx_http_variable_t ngx_http_secure_link_vars[] = {
+static ngx_http_variable_t ngx_http_secure_link_hmac_vars[] = {
     { ngx_string("secure_link_hmac"), NULL,
-      ngx_http_secure_link_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
+      ngx_http_secure_link_hmac_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
     { ngx_string("secure_link_hmac_expires"), NULL,
-      ngx_http_secure_link_expires_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
+      ngx_http_secure_link_hmac_expires_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
     { ngx_string("secure_link_hmac_token"), NULL,
-      ngx_http_secure_link_token_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
+      ngx_http_secure_link_hmac_token_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0}
 };
 
 
 static ngx_int_t
-ngx_http_secure_link_variable(ngx_http_request_t *r,
+ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_secure_link_ctx_t   *ctx;
-    ngx_http_secure_link_conf_t  *conf;
+    ngx_http_secure_link_hmac_ctx_t   *ctx;
+    ngx_http_secure_link_hmac_conf_t  *conf;
     const EVP_MD                 *evp_md;
     u_char                       *p, *last;
     ngx_str_t                     value, hash, key;
@@ -128,7 +128,7 @@ ngx_http_secure_link_variable(ngx_http_request_t *r,
     int                           year, month, mday, hour, min, sec, gmtoff_hour, gmtoff_min;
     char                          gmtoff_sign;
 
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_hmac_secure_link_module);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
     if (conf->hmac_variable == NULL || conf->hmac_message == NULL || conf->hmac_secret == NULL) {
         goto not_found;
@@ -231,12 +231,12 @@ ngx_http_secure_link_variable(ngx_http_request_t *r,
                 goto not_found;
             }
 
-            ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_secure_link_ctx_t));
+            ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_secure_link_hmac_ctx_t));
             if (ctx == NULL) {
                 return NGX_ERROR;
             }
 
-            ngx_http_set_ctx(r, ctx, ngx_http_hmac_secure_link_module);
+            ngx_http_set_ctx(r, ctx, ngx_http_secure_link_hmac_module);
 
             ctx->expires.len = value.len;
             ctx->expires.data = value.data;
@@ -299,16 +299,16 @@ not_found:
 }
 
 static ngx_int_t
-ngx_http_secure_link_token_variable(ngx_http_request_t *r,
+ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_secure_link_conf_t  *conf;
+    ngx_http_secure_link_hmac_conf_t  *conf;
     u_char                       *p;
     ngx_str_t                     value, key, hmac, token;
     const EVP_MD                 *evp_md;
     u_char                        hmac_buf[EVP_MAX_MD_SIZE];
 
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_hmac_secure_link_module);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
     if (conf->hmac_message == NULL || conf->hmac_secret == NULL) {
         goto not_found;
@@ -361,12 +361,12 @@ not_found:
 }
 
 static ngx_int_t
-ngx_http_secure_link_expires_variable(ngx_http_request_t *r,
+ngx_http_secure_link_hmac_expires_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_secure_link_ctx_t  *ctx;
+    ngx_http_secure_link_hmac_ctx_t  *ctx;
 
-    ctx = ngx_http_get_module_ctx(r, ngx_http_hmac_secure_link_module);
+    ctx = ngx_http_get_module_ctx(r, ngx_http_secure_link_hmac_module);
 
     if (ctx) {
         v->len = ctx->expires.len;
@@ -383,11 +383,11 @@ ngx_http_secure_link_expires_variable(ngx_http_request_t *r,
 }
 
 static void *
-ngx_http_secure_link_create_conf(ngx_conf_t *cf)
+ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
 {
-    ngx_http_secure_link_conf_t  *conf;
+    ngx_http_secure_link_hmac_conf_t  *conf;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_secure_link_conf_t));
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_secure_link_hmac_conf_t));
     if (conf == NULL) {
         return NULL;
     }
@@ -406,12 +406,12 @@ ngx_http_secure_link_create_conf(ngx_conf_t *cf)
 
 
 static char *
-ngx_http_secure_link_merge_conf(ngx_conf_t *cf, void *parent, void *child)
+ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 {
-    ngx_http_secure_link_conf_t *prev = parent;
-    ngx_http_secure_link_conf_t *conf = child;
+    ngx_http_secure_link_hmac_conf_t *prev = parent;
+    ngx_http_secure_link_hmac_conf_t *conf = child;
 
-    ngx_conf_merge_str_value(conf->hmac_algorithm, prev->hmac_algorithm, NGX_DEFAULT_HASH_FUNCTION);
+    ngx_conf_merge_str_value(conf->hmac_algorithm, prev->hmac_algorithm, NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH);
 
     if (conf->hmac_variable == NULL) {
         conf->hmac_variable = prev->hmac_variable;
@@ -429,11 +429,11 @@ ngx_http_secure_link_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 }
 
 static ngx_int_t
-ngx_http_secure_link_add_variables(ngx_conf_t *cf)
+ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf)
 {
     ngx_http_variable_t  *var, *v;
 
-    for (v = ngx_http_secure_link_vars; v->name.len; v++) {
+    for (v = ngx_http_secure_link_hmac_vars; v->name.len; v++) {
         var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (var == NULL) {
             return NGX_ERROR;
