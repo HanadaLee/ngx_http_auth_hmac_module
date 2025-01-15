@@ -10,10 +10,10 @@
 #define NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH  "sha256"
 
 typedef struct {
-    ngx_http_complex_value_t  *hmac_variable;
-    ngx_http_complex_value_t  *hmac_message;
-    ngx_http_complex_value_t  *hmac_secret;
-    ngx_str_t                  hmac_algorithm;
+    ngx_http_complex_value_t  *variable;
+    ngx_http_complex_value_t  *message;
+    ngx_http_complex_value_t  *secret;
+    ngx_str_t                  algorithm;
 } ngx_http_secure_link_hmac_conf_t;
 
 
@@ -39,28 +39,28 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_variable),
+      offsetof(ngx_http_secure_link_hmac_conf_t, variable),
       NULL },
 
     { ngx_string("secure_link_hmac_message"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_message),
+      offsetof(ngx_http_secure_link_hmac_conf_t, message),
       NULL },
 
-    { ngx_string("secure_link_hmac_secret"),
+    { ngx_string("secure_link_secret"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_secret),
+      offsetof(ngx_http_secure_link_hmac_conf_t, secret),
       NULL },
 
     { ngx_string("secure_link_hmac_algorithm"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, hmac_algorithm),
+      offsetof(ngx_http_secure_link_hmac_conf_t, algorithm),
       NULL },
 
       ngx_null_command
@@ -130,11 +130,11 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
-    if (conf->hmac_variable == NULL || conf->hmac_message == NULL || conf->hmac_secret == NULL) {
+    if (conf->variable == NULL || conf->message == NULL || conf->secret == NULL) {
         goto not_found;
     }
 
-    if (ngx_http_complex_value(r, conf->hmac_variable, &value) != NGX_OK) {
+    if (ngx_http_complex_value(r, conf->variable, &value) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -243,10 +243,10 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         }
     }
 
-    evp_md = EVP_get_digestbyname((const char*) conf->hmac_algorithm.data);
+    evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
     if (evp_md == NULL) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "Unknown cryptographic hash function \"%s\"", conf->hmac_algorithm.data);
+                       "Unknown cryptographic hash function \"%s\"", conf->algorithm.data);
 
         return NGX_ERROR;
     }
@@ -266,14 +266,14 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         goto not_found;
     }
 
-    if (ngx_http_complex_value(r, conf->hmac_message, &value) != NGX_OK) {
+    if (ngx_http_complex_value(r, conf->message, &value) != NGX_OK) {
         return NGX_ERROR;
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "secure link message: \"%V\"", &value);
 
-    if (ngx_http_complex_value(r, conf->hmac_secret, &key) != NGX_OK) {
+    if (ngx_http_complex_value(r, conf->secret, &key) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -310,7 +310,7 @@ ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
-    if (conf->hmac_message == NULL || conf->hmac_secret == NULL) {
+    if (conf->message == NULL || conf->secret == NULL) {
         goto not_found;
     }
 
@@ -319,21 +319,21 @@ ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
-    if (ngx_http_complex_value(r, conf->hmac_message, &value) != NGX_OK) {
+    if (ngx_http_complex_value(r, conf->message, &value) != NGX_OK) {
         return NGX_ERROR;
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "secure link string to sign: \"%V\"", &value);
 
-    if (ngx_http_complex_value(r, conf->hmac_secret, &key) != NGX_OK) {
+    if (ngx_http_complex_value(r, conf->secret, &key) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    evp_md = EVP_get_digestbyname((const char*) conf->hmac_algorithm.data);
+    evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
     if (evp_md == NULL) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "Unknown cryptographic hash function \"%s\"", conf->hmac_algorithm.data);
+                       "Unknown cryptographic hash function \"%s\"", conf->algorithm.data);
 
         return NGX_ERROR;
     }
@@ -395,10 +395,10 @@ ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
     /*
      * set by ngx_pcalloc():
      *
-     *     conf->hmac_variable = NULL;
-     *     conf->hmac_message = NULL;
-     *     conf->hmac_secret = NULL;
-     *     conf->hmac_algorithm = {0,NULL};
+     *     conf->variable = NULL;
+     *     conf->message = NULL;
+     *     conf->secret = NULL;
+     *     conf->algorithm = {0,NULL};
      */
 
     return conf;
@@ -411,18 +411,18 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_http_secure_link_hmac_conf_t *prev = parent;
     ngx_http_secure_link_hmac_conf_t *conf = child;
 
-    ngx_conf_merge_str_value(conf->hmac_algorithm, prev->hmac_algorithm, NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH);
+    ngx_conf_merge_str_value(conf->algorithm, prev->algorithm, NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH);
 
-    if (conf->hmac_variable == NULL) {
-        conf->hmac_variable = prev->hmac_variable;
+    if (conf->variable == NULL) {
+        conf->variable = prev->variable;
     }
 
-    if (conf->hmac_message == NULL) {
-        conf->hmac_message = prev->hmac_message;
+    if (conf->message == NULL) {
+        conf->message = prev->message;
     }
 
-    if (conf->hmac_secret == NULL) {
-        conf->hmac_secret = prev->hmac_secret;
+    if (conf->secret == NULL) {
+        conf->secret = prev->secret;
     }
 
     return NGX_CONF_OK;
