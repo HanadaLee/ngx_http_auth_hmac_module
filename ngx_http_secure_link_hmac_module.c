@@ -10,7 +10,12 @@
 #define NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH  "sha256"
 
 typedef struct {
-    ngx_http_complex_value_t  *variable;
+    ngx_flag_t                 enable;
+    ngx_http_complex_value_t  *token;
+    ngx_http_complex_value_t  *time;
+    ngx_http_complex_value_t  *start;
+    ngx_http_complex_value_t  *end;
+    ngx_str_t                  time_format;
     ngx_http_complex_value_t  *message;
     ngx_http_complex_value_t  *secret;
     ngx_str_t                  algorithm;
@@ -30,6 +35,8 @@ static ngx_int_t ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
 static void *ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf);
 static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
+static char *ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf);
 
 
@@ -37,9 +44,30 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
 
     { ngx_string("secure_link_hmac"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_secure_link_hmac_conf_t, enable),
+      NULL },
+
+    { ngx_string("secure_link_hmac_check_time"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, variable),
+      offsetof(ngx_http_secure_link_hmac_conf_t, time),
+      NULL },
+
+    { ngx_string("secure_link_hmac_valid_time_range"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
+      ngx_http_secure_link_hmac_valid_time_range,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("secure_link_hmac_valid_time_format"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_secure_link_hmac_conf_t, time_format),
       NULL },
 
     { ngx_string("secure_link_hmac_message"),
@@ -49,7 +77,14 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
       offsetof(ngx_http_secure_link_hmac_conf_t, message),
       NULL },
 
-    { ngx_string("secure_link_secret"),
+    { ngx_string("secure_link_hmac_check_token"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_complex_value_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_secure_link_hmac_conf_t, token),
+      NULL },
+
+    { ngx_string("secure_link_hmac_secret"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
@@ -69,13 +104,13 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
 
 static ngx_http_module_t  ngx_http_secure_link_hmac_module_ctx = {
     ngx_http_secure_link_hmac_add_variables,    /* preconfiguration */
-    NULL,                                  /* postconfiguration */
+    NULL,                                       /* postconfiguration */
 
-    NULL,                                  /* create main configuration */
-    NULL,                                  /* init main configuration */
+    NULL,                                       /* create main configuration */
+    NULL,                                       /* init main configuration */
 
-    NULL,                                  /* create server configuration */
-    NULL,                                  /* merge server configuration */
+    NULL,                                       /* create server configuration */
+    NULL,                                       /* merge server configuration */
 
     ngx_http_secure_link_hmac_create_conf,      /* create location configuration */
     ngx_http_secure_link_hmac_merge_conf        /* merge location configuration */
@@ -85,15 +120,15 @@ static ngx_http_module_t  ngx_http_secure_link_hmac_module_ctx = {
 ngx_module_t  ngx_http_secure_link_hmac_module = {
     NGX_MODULE_V1,
     &ngx_http_secure_link_hmac_module_ctx,      /* module context */
-    ngx_http_secure_link_hmac_commands,    /* module directives */
-    NGX_HTTP_MODULE,                       /* module type */
-    NULL,                                  /* init master */
-    NULL,                                  /* init module */
-    NULL,                                  /* init process */
-    NULL,                                  /* init thread */
-    NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
-    NULL,                                  /* exit master */
+    ngx_http_secure_link_hmac_commands,         /* module directives */
+    NGX_HTTP_MODULE,                            /* module type */
+    NULL,                                       /* init master */
+    NULL,                                       /* init module */
+    NULL,                                       /* init process */
+    NULL,                                       /* init thread */
+    NULL,                                       /* exit thread */
+    NULL,                                       /* exit process */
+    NULL,                                       /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
@@ -427,6 +462,95 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
     return NGX_CONF_OK;
 }
+
+
+static char *
+ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf)
+{
+    ngx_http_secure_link_hmac_conf_t *slcf = conf;
+
+    ngx_uint_t                          i;
+    ngx_str_t                          *value;
+    ngx_http_compile_complex_value_t    ccv;
+    ngx_flag_t                          start, end;
+    ngx_str_t                           s;
+
+
+    if (cf->args->nelts < 2) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid number of arguments");
+        return NGX_CONF_ERROR;
+    }
+
+    if (slcf->start != NULL || slcf->end != NULL) {
+        return "is duplicate";
+    }
+
+    value = cf->args->elts;
+
+    for (i = 1; i < cf->args->nelts; i++) {
+
+        if (param.len > 6 && ngx_strncmp(param.data, "start=", 6) == 0) {
+            s.len = value[i].len - 6;
+            s.data = value[i].data + 6;
+
+            ccv.cf = cf;
+            ccv.value = &s;
+            ccv.complex_value = ngx_palloc(cf->pool,
+                                        sizeof(ngx_http_complex_value_t));
+            if (ccv.complex_value == NULL) {
+                return NGX_CONF_ERROR;
+            }
+
+            if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
+
+            slcf->start = ccv.complex_value;
+
+            continue;
+        }
+
+        if (param.len >= 4 && ngx_strncmp(param.data, "end=", 4) == 0) {
+            s.len = value[i].len - 4;
+            s.data = value[i].data + 4;
+
+            ccv.cf = cf;
+            ccv.value = &s;
+            ccv.complex_value = ngx_palloc(cf->pool,
+                                        sizeof(ngx_http_complex_value_t));
+            if (ccv.complex_value == NULL) {
+                return NGX_CONF_ERROR;
+            }
+
+            if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
+
+            slcf->end = ccv.complex_value;
+
+            continue;
+        }
+
+        ccv.cf = cf;
+        ccv.value = &value[i];
+        ccv.complex_value = ngx_palloc(cf->pool,
+                                    sizeof(ngx_http_complex_value_t));
+        if (ccv.complex_value == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+            return NGX_CONF_ERROR;
+        }
+
+        slcf->end = ccv.complex_value;
+    }
+
+    return NGX_CONF_OK;
+}
+
 
 static ngx_int_t
 ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf)
