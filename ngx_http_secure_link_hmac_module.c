@@ -9,13 +9,20 @@
 
 #define NGX_HTTP_SECURE_LINK_HMAC_DEFAULT_HASH  "sha256"
 
+#define NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP    1
+#define NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP  2
+#define NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP 3
+#define NGX_HTTP_SECURE_LINK_HMAC_DATE         4
+
 typedef struct {
     ngx_flag_t                 enable;
     ngx_http_complex_value_t  *token;
     ngx_http_complex_value_t  *time;
     ngx_http_complex_value_t  *start;
     ngx_http_complex_value_t  *end;
+    ngx_uint_t                 time_mode;
     ngx_str_t                  time_format;
+    time_t                     time_offset;
     ngx_http_complex_value_t  *message;
     ngx_http_complex_value_t  *secret;
     ngx_str_t                  algorithm;
@@ -35,7 +42,8 @@ static ngx_int_t ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
 static void *ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf);
 static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
-static char *ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
+static ngx_int_t ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s);
+static char *ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf);
 
@@ -51,23 +59,9 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
 
     { ngx_string("secure_link_hmac_check_time"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
-      ngx_http_set_complex_value_slot,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, time),
-      NULL },
-
-    { ngx_string("secure_link_hmac_valid_time_range"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
-      ngx_http_secure_link_hmac_valid_time_range,
+      ngx_http_secure_link_hmac_check_time,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
-      NULL },
-
-    { ngx_string("secure_link_hmac_valid_time_format"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_str_slot,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, time_format),
       NULL },
 
     { ngx_string("secure_link_hmac_message"),
@@ -155,26 +149,129 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_http_secure_link_hmac_conf_t  *conf;
     const EVP_MD                 *evp_md;
     u_char                       *p, *last;
-    ngx_str_t                     value, hash, key;
+    ngx_str_t                     value;
+    ngx_int_t                     is_negative;
+    time_t                        start, end;
+    ngx_int_t                     start_is_valid, end_is_valid;                   
+    ngx_str_t                     hash, key;
     u_char                        hash_buf[EVP_MAX_MD_SIZE], hmac_buf[EVP_MAX_MD_SIZE];
     u_int                         hmac_len;
-    time_t                        timestamp, expires, gmtoff;
+    time_t                        timestamp, start, end, gmtoff;
     unsigned long long            conv_timestamp;
     int                           year, month, mday, hour, min, sec, gmtoff_hour, gmtoff_min;
     char                          gmtoff_sign;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
-    if (conf->variable == NULL || conf->message == NULL || conf->secret == NULL) {
+    if (!conf->enable
+        || conf->token == NULL
+        || conf->message == NULL
+        || conf->secret == NULL)
+    {
         goto not_found;
     }
 
-    if (ngx_http_complex_value(r, conf->variable, &value) != NGX_OK) {
+    /* no time range is set, no check for expiration */
+    if (conf->time == NULL
+        || (conf->start == NULL && conf->end == NULL))
+    {
+        goto token;
+    }
+
+    if (conf->start == NULL) {
+        start_is_valid = 0;
+
+    } else {
+        if (ngx_http_complex_value(r, conf->start, &value) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (value.len > 0) {
+            is_negative = 0;
+
+            if (value.data[0] = '-') {
+                is_negative = 1;
+                value.data++;
+                value.len--;
+            }
+
+            if (len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
+                start = ngx_hextoi(value.data + 2, value.len - 2);
+
+            } else {
+                start = ngx_atoi(value.data, value.len);
+            }
+
+            if (start == NGX_ERROR) {
+                start_is_valid = 0;
+            }
+
+            if (is_negative) {
+                start = -start;
+            }
+
+            start_is_valid = 1;
+        } else {
+            start_is_valid = 0;
+        }
+    }
+
+    if (conf->end == NULL) {
+        end_is_valid = 0;
+
+    } else {
+        if (ngx_http_complex_value(r, conf->end, &value) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (value.len > 0) {
+            is_negative = 0;
+
+            if (value.data[0] = '-') {
+                is_negative = 1;
+                value.data++;
+                value.len--;
+            }
+
+            if (len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
+                end = ngx_hextoi(value.data + 2, value.len - 2);
+
+            } else {
+                end = ngx_atoi(value.data, value.len);
+            }
+
+            if (end == NGX_ERROR) {
+                end_is_valid = 0;
+            }
+
+            if (is_negative) {
+                end = -end;
+            }
+
+            end_is_valid = 1;
+        } else {
+            end_is_valid = 0;
+        }
+    }
+
+    /* Invalid time range */
+    if ((start_is_valid == 0 && end_is_valid == 0)
+        || (start_is_valid == 1 && end_is_valid == 1 && start > end))
+    {
+        goto not_found;
+    }
+
+    if (ngx_http_complex_value(r, conf->time, &value) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "secure link variable: \"%V\"", &value);
+    if (value.len == 0) {
+        goto not_found;
+    }
+
+    /* todo */
+
+
 
     last = value.data + value.len;
 
@@ -182,15 +279,15 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     timestamp = 0;
     expires = 0;
 
+
+
     if (p) {
         value.len = p++ - value.data;
 
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "secure link token: \"%V\"", &value);
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "secure link timestamp: \"%*s\"",
-                        sizeof("1970-09-28T12:00:00+06:00")-1, p);
+
 
         /* Parse timestamp in ISO8601 format */
         if (sscanf((char *)p, "%4d-%02d-%02dT%02d:%02d:%02d%c%02i:%02i",
@@ -277,6 +374,8 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
             ctx->expires.data = value.data;
         }
     }
+
+token:
 
     evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
     if (evp_md == NULL) {
@@ -464,36 +563,179 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 }
 
 
+static ngx_int_t
+ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s)
+{
+    u_char      *p;
+    size_t       len;
+
+    if (s == NULL || s->len == 0) {
+        return 0;
+    }
+
+    p = s->data;
+    len = s->len;
+
+    if (*p == '-') {
+        p++;
+        len--;
+
+        if (len == 0) {
+            return 0;
+        }
+    }
+
+    if (len > 2 && p[0] == '0' && (p[1] == 'x')) {
+        p += 2;
+        len -= 2;
+
+        if (len == 0) {
+            return 0;
+        }
+
+        while (len--) {
+            if (!((*p >= '0' && *p <= '9') ||
+                  || (*p >= 'a' && *p <= 'f') ||
+                  || (*p >= 'A' && *p <= 'F')))
+            {
+                return 0;
+            }
+            p++;
+        }
+
+        return 1;
+    }
+
+    while (len--) {
+        if (!(*p >= '0' && *p <= '9')) {
+            return 0;
+        }
+        p++;
+    }
+
+    return 1;
+}
+
+
 static char *
-ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
+ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf)
 {
     ngx_http_secure_link_hmac_conf_t *slcf = conf;
 
-    ngx_uint_t                          i;
+    ngx_uint_t                          i, j;
     ngx_str_t                          *value;
     ngx_http_compile_complex_value_t    ccv;
-    ngx_flag_t                          start, end;
     ngx_str_t                           s;
+    time_t                              time_offset;
 
-
-    if (cf->args->nelts < 2) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                           "invalid number of arguments");
-        return NGX_CONF_ERROR;
-    }
-
-    if (slcf->start != NULL || slcf->end != NULL) {
+    if (slcf->time != NGX_CONF_UNSET_PTR && slcf->time != NULL) {
         return "is duplicate";
     }
 
     value = cf->args->elts;
 
-    for (i = 1; i < cf->args->nelts; i++) {
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
 
-        if (param.len > 6 && ngx_strncmp(param.data, "start=", 6) == 0) {
-            s.len = value[i].len - 6;
-            s.data = value[i].data + 6;
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = ngx_palloc(cf->pool,
+                                sizeof(ngx_http_complex_value_t));
+    if (ccv.complex_value == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    slcf->time = ccv.complex_value;
+
+    for (i = 2; i < cf->args->nelts; i++) {
+
+        if (value[i].len > 7 && ngx_strncmp(value[i].data, "format=", 7) == 0) {
+            s.len = value[i].len - 7;
+            s.data = value[i].data + 7;
+
+            if (s.len == 2 && s.data[0] == '%' && s.data[1] == 's') {
+                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP;
+                continue;
+            }
+
+            if (s.len == 3 && s.data[0] == '%'
+                && s.data[1] == 'm' && s.data[1] == 's') {
+                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP;
+                continue;
+            }
+
+            if (s.len == 2 && s.data[0] == '%' && s.data[1] == 'x') {
+                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP;
+                continue;
+            }
+
+            slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_DATE;
+            slcf->time_format = s;
+
+            continue;
+        }
+
+        if (value[i].len > 9 && ngx_strncmp(value[i].data, "timezone=", 9) == 0) {
+            s.len = value[i].len - 9;
+            s.data = value[i].data + 9;
+
+            if (ngx_strncmp(s.data, "gmt", 3) != 0) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                "invalid timezone format");
+                return NGX_CONF_ERROR;
+            }
+
+            if (s.len == 3) {
+                slcf->time_offset = 0;
+                continue;
+            }
+
+            if (s.len != 8
+                || (s.data[3] != '+' && s.data[3] != '-'))
+            {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                "invalid timezone format");
+                return NGX_CONF_ERROR;
+            }
+
+            for (j = 4; j < 8; j++) {
+                if (s.data[j] < '0' || s.data[j] > '9') {
+                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                        "invalid timezone value");
+                    return NGX_CONF_ERROR;
+                }
+            }
+
+            /* Parse timezone offset, e.g., +0800 or -0200 */
+            time_offset = ((s.data[4] - '0') * 10
+                            + (s.data[5] - '0')) * 3600;
+            time_offset += ((s.data[6] - '0') * 10
+                            + (s.data[7] - '0')) * 60;
+
+            if (s.data[3] == '-') {
+                time_offset = -time_offset;
+            }
+
+            slcf->time_offset = time_offset;
+
+            continue;
+        }
+
+        if (value[i].len > 12 && ngx_strncmp(value[i].data, "range_start=", 12) == 0) {
+            s.len = value[i].len - 12;
+            s.data = value[i].data + 12;
+
+            if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
+                if (!ngx_http_secure_link_hmac_is_valid_number(&s)) {
+                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                        "invalid numeric value in start value[i]eter \"%V\"", &s);
+                    return NGX_CONF_ERROR;
+                }
+            }
 
             ccv.cf = cf;
             ccv.value = &s;
@@ -512,9 +754,17 @@ ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
             continue;
         }
 
-        if (param.len >= 4 && ngx_strncmp(param.data, "end=", 4) == 0) {
-            s.len = value[i].len - 4;
-            s.data = value[i].data + 4;
+        if (value[i].len >= 10 && ngx_strncmp(value[i].data, "range_end=", 10) == 0) {
+            s.len = value[i].len - 10;
+            s.data = value[i].data + 10;
+
+            if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
+                if (!ngx_http_secure_link_hmac_is_valid_number(&s)) {
+                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                        "invalid numeric value in end value[i]eter \"%V\"", &s);
+                    return NGX_CONF_ERROR;
+                }
+            }
 
             ccv.cf = cf;
             ccv.value = &s;
@@ -529,24 +779,24 @@ ngx_http_secure_link_hmac_valid_time_range(ngx_conf_t *cf,
             }
 
             slcf->end = ccv.complex_value;
-
-            continue;
         }
-
-        ccv.cf = cf;
-        ccv.value = &value[i];
-        ccv.complex_value = ngx_palloc(cf->pool,
-                                    sizeof(ngx_http_complex_value_t));
-        if (ccv.complex_value == NULL) {
-            return NGX_CONF_ERROR;
-        }
-
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
-            return NGX_CONF_ERROR;
-        }
-
-        slcf->end = ccv.complex_value;
     }
+
+    return NGX_CONF_OK;
+}
+
+
+static char *
+ngx_http_secure_link_hmac_check_time_zone(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf)
+{
+    ngx_http_secure_link_hmac_conf_t *slcf = conf;
+
+    ngx_str_t   *value;
+    ngx_uint_t   i;
+    time_t       time_offset;
+
+    value = cf->args->elts;
 
     return NGX_CONF_OK;
 }
