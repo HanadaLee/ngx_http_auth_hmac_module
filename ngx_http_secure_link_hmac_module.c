@@ -609,7 +609,7 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
             s.data = value[i].data + 12;
 
             if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
-                if (!ngx_http_secure_link_hmac_is_valid_number(&s)) {
+                if (!ngx_http_secure_link_hmac_is_valid_num(&s)) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                         "invalid numeric value in start value[i]eter \"%V\"", &s);
                     return NGX_CONF_ERROR;
@@ -671,11 +671,8 @@ ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
 {
     ngx_http_secure_link_hmac_conf_t *slcf = conf;
 
-    ngx_uint_t                          i, j;
     ngx_str_t                          *value;
     ngx_http_compile_complex_value_t    ccv;
-    ngx_str_t                           s;
-    time_t                              time_offset;
 
     if (slcf->token != NGX_CONF_UNSET_PTR && slcf->token != NULL) {
         return "is duplicate";
@@ -709,7 +706,7 @@ ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
 
         } else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                               "invalid token format,\"%V\"", &value[2])
+                               "invalid token format,\"%V\"", &value[2]);
             return NGX_CONF_ERROR;
         }
 
@@ -728,7 +725,7 @@ ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst, ngx_str_t *src)
     u_char     *p;
     ngx_int_t   n;
 
-    if (hex_str.len % 2 != 0) {
+    if (src->len % 2 != 0) {
         return NGX_ERROR;
     }
 
