@@ -297,8 +297,8 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     }
 
     now = ngx_time();
-    if ((start_is_valid && (now + start < timestamp))
-        || (end_is_valid && (now + end > timestamp)))
+    if ((start_is_valid && (now < timestamp + start))
+        || (end_is_valid && (now > timestamp + end)))
     {
         ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
                         "secure link expired");
