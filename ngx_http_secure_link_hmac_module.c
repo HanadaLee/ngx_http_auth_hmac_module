@@ -14,34 +14,33 @@
 #define NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP 3
 #define NGX_HTTP_SECURE_LINK_HMAC_DATE         4
 
+#define NGX_HTTP_SECURE_LINK_HMAC_BASE64URL    1
+#define NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST    2
+
 typedef struct {
     ngx_flag_t                 enable;
     ngx_http_complex_value_t  *token;
     ngx_http_complex_value_t  *time;
     ngx_http_complex_value_t  *start;
     ngx_http_complex_value_t  *end;
+    ngx_http_complex_value_t  *message;
+    ngx_http_complex_value_t  *secret;
     ngx_uint_t                 time_mode;
     ngx_str_t                  time_format;
     time_t                     time_offset;
-    ngx_http_complex_value_t  *message;
-    ngx_http_complex_value_t  *secret;
+    ngx_str_t                  token_format;
     ngx_str_t                  algorithm;
 } ngx_http_secure_link_hmac_conf_t;
 
 
-typedef struct {
-    ngx_str_t                  expires;
-} ngx_http_secure_link_hmac_ctx_t;
-
 static ngx_int_t ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
-    ngx_http_variable_value_t *v, uintptr_t data);
-static ngx_int_t ngx_http_secure_link_hmac_expires_variable(ngx_http_request_t *r,
-    ngx_http_variable_value_t *v, uintptr_t data);
-static ngx_int_t ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 static void *ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf);
 static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
+
+static ngx_int_t ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst,
+    ngx_str_t *src)
 static ngx_int_t ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s);
 static char *ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
@@ -131,12 +130,6 @@ static ngx_http_variable_t ngx_http_secure_link_hmac_vars[] = {
     { ngx_string("secure_link_hmac"), NULL,
       ngx_http_secure_link_hmac_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
-    { ngx_string("secure_link_hmac_expires"), NULL,
-      ngx_http_secure_link_hmac_expires_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
-
-    { ngx_string("secure_link_hmac_token"), NULL,
-      ngx_http_secure_link_hmac_token_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
-
     { ngx_null_string, NULL, NULL, 0, 0, 0}
 };
 
@@ -145,21 +138,18 @@ static ngx_int_t
 ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_secure_link_hmac_ctx_t   *ctx;
     ngx_http_secure_link_hmac_conf_t  *conf;
     const EVP_MD                 *evp_md;
     u_char                       *p, *last;
     ngx_str_t                     value;
     ngx_int_t                     is_negative;
-    time_t                        start, end;
-    ngx_int_t                     start_is_valid, end_is_valid;                   
+    time_t                        timestamp, now, start, end;
+    ngx_int_t                     start_is_valid, end_is_valid;
+    ngx_tm_t                      tm;
+    ngx_uint_t                    i;
     ngx_str_t                     hash, key;
     u_char                        hash_buf[EVP_MAX_MD_SIZE], hmac_buf[EVP_MAX_MD_SIZE];
     u_int                         hmac_len;
-    time_t                        timestamp, start, end, gmtoff;
-    unsigned long long            conv_timestamp;
-    int                           year, month, mday, hour, min, sec, gmtoff_hour, gmtoff_min;
-    char                          gmtoff_sign;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
 
@@ -189,13 +179,13 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         if (value.len > 0) {
             is_negative = 0;
 
-            if (value.data[0] = '-') {
+            if (value.data[0] == '-') {
                 is_negative = 1;
                 value.data++;
                 value.len--;
             }
 
-            if (len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
+            if (value.len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
                 start = ngx_hextoi(value.data + 2, value.len - 2);
 
             } else {
@@ -227,13 +217,13 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         if (value.len > 0) {
             is_negative = 0;
 
-            if (value.data[0] = '-') {
+            if (value.data[0] == '-') {
                 is_negative = 1;
                 value.data++;
                 value.len--;
             }
 
-            if (len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
+            if (value.len >= 2 && value.data[0] == '0' && value.data[1] == 'x') {
                 end = ngx_hextoi(value.data + 2, value.len - 2);
 
             } else {
@@ -269,110 +259,46 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         goto not_found;
     }
 
-    /* todo */
+    if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP) {
+        timestamp = (time_t) ngx_atoi(value.data, value.len);
 
+    } else if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP) {
+        timestamp = (time_t) ngx_atoi(value.data , value.len - 3);
 
+    } else if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP) {
+        timestamp = (time_t) ngx_hextoi(value.data, value.len);
 
-    last = value.data + value.len;
+    } else { /* NGX_HTTP_SECURE_LINK_HMAC_DATE */
+        ngx_memzero(&tm, sizeof(ngx_tm_t));
 
-    p = ngx_strlchr(value.data, last, ',');
-    timestamp = 0;
-    expires = 0;
-
-
-
-    if (p) {
-        value.len = p++ - value.data;
-
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "secure link token: \"%V\"", &value);
-
-
-
-        /* Parse timestamp in ISO8601 format */
-        if (sscanf((char *)p, "%4d-%02d-%02dT%02d:%02d:%02d%c%02i:%02i",
-                              (ngx_tm_year_t *) &year, (ngx_tm_mon_t *) &month,
-                              (ngx_tm_mday_t *) &mday, (ngx_tm_hour_t *) &hour,
-                              (ngx_tm_min_t *) &min, (ngx_tm_sec_t *) &sec,
-                              &gmtoff_sign, &gmtoff_hour, &gmtoff_min) == 9) {
-
-            /* Put February last because it has leap day */
-            month -= 2;
-            if (month <= 0) {
-                month += 12;
-                year -= 1;
-            }
-
-            /* Gauss' formula for Gregorian days since March 1, 1 BC */
-            /* Taken from ngx_http_parse_time.c */
-            timestamp = (time_t) (
-                         /* days in years including leap years since March 1, 1 BC */
-                         365 * year + year / 4 - year / 100 + year / 400
-                         /* days before the month */
-                         + 367 * month / 12 - 30
-                         /* days before the day */
-                         + mday - 1
-                         /*
-                          * 719527 days were between March 1, 1 BC and March 1, 1970,
-                          * 31 and 28 days were in January and February 1970
-                          */
-                         - 719527 + 31 + 28) * 86400 + hour * 3600 + min * 60 + sec;
-
-            /* Determine the time offset with respect to GMT */
-            gmtoff = 3600 * gmtoff_hour + 60 * gmtoff_min;
-
-            if (gmtoff_sign == '+') {
-                timestamp -= gmtoff;
-            }
-
-            if (gmtoff_sign == '-') {
-                timestamp += gmtoff;
-            }
-
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "secure link timestamp: \"%T\"", timestamp);
-
-        } else if (sscanf((char *)p, "%llu", &conv_timestamp) == 1) {
-            /* Try if p is UNIX timestamp */
-
-            timestamp = (time_t)conv_timestamp;
-
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "secure link timestamp: \"%T\"", timestamp);
-
-        } else {
-          goto not_found;
+        if (strptime((char *) value.data,
+            (char *) conf->time_format.data, &tm) == NULL) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                            "failed to parse date string");
+            return NGX_ERROR;
         }
 
-        if (timestamp <= 0) {
+        /* Convert to unix_time */
+        timestamp = timegm(&tm);
+        
+        if (timestamp == (time_t) NGX_ERROR) {
             goto not_found;
         }
 
-        /* Parse expiration period in seconds */
-        p = ngx_strlchr(p, last, ',');
+        timestamp -= conf->time_offset;
+    }
 
-        if (p) {
-            p++;
+    if (timestamp <= 0) {
+        goto not_found;
+    }
 
-            expires = ngx_atotm(p, last - p);
-
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "secure link expires: \"%T\"", expires);
-
-            if (expires < 0) {
-                goto not_found;
-            }
-
-            ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_secure_link_hmac_ctx_t));
-            if (ctx == NULL) {
-                return NGX_ERROR;
-            }
-
-            ngx_http_set_ctx(r, ctx, ngx_http_secure_link_hmac_module);
-
-            ctx->expires.len = value.len;
-            ctx->expires.data = value.data;
-        }
+    now = ngx_time();
+    if (start_is_valid && now + start < timestamp
+        || end_is_valid && now + end > timestamp)
+    {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                        "secure link expiresd");
+        goto not_found;
     }
 
 token:
@@ -388,12 +314,24 @@ token:
     hash.len  = (u_int) EVP_MD_size(evp_md);
     hash.data = hash_buf;
 
-    if (value.len > ngx_base64_encoded_length(hash.len)+2) {
-        goto not_found;
+    if (ngx_http_complex_value(r, conf->token, &value) != NGX_OK) {
+        return NGX_ERROR;
     }
 
-    if (ngx_decode_base64url(&hash, &value) != NGX_OK) {
-        goto not_found;
+    if (conf->token_format == NGX_HTTP_SECURE_LINK_HMAC_BASE64URL) {
+
+        if (value.len > ngx_base64_encoded_length(hash.len)+2) {
+            goto not_found;
+        }
+
+        if (ngx_decode_base64url(&hash, &value) != NGX_OK) {
+            goto not_found;
+        }
+
+    } else {
+        if (ngx_http_secure_link_hmac_hex_decode(&hash, &value) != NGX_OK) {
+            goto not_found;
+        }
     }
 
     if (hash.len != (u_int) EVP_MD_size(evp_md)) {
@@ -417,7 +355,7 @@ token:
         goto not_found;
     }
 
-    v->data = (u_char *) ((expires && timestamp + expires < ngx_time()) ? "0" : "1");
+    v->data = (u_char *) "1";
     v->len = 1;
     v->valid = 1;
     v->no_cacheable = 0;
@@ -432,89 +370,6 @@ not_found:
     return NGX_OK;
 }
 
-static ngx_int_t
-ngx_http_secure_link_hmac_token_variable(ngx_http_request_t *r,
-    ngx_http_variable_value_t *v, uintptr_t data)
-{
-    ngx_http_secure_link_hmac_conf_t  *conf;
-    u_char                       *p;
-    ngx_str_t                     value, key, hmac, token;
-    const EVP_MD                 *evp_md;
-    u_char                        hmac_buf[EVP_MAX_MD_SIZE];
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
-
-    if (conf->message == NULL || conf->secret == NULL) {
-        goto not_found;
-    }
-
-    p = ngx_pnalloc(r->pool, ngx_base64_encoded_length(EVP_MAX_MD_SIZE));
-    if (p == NULL) {
-        return NGX_ERROR;
-    }
-
-    if (ngx_http_complex_value(r, conf->message, &value) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "secure link string to sign: \"%V\"", &value);
-
-    if (ngx_http_complex_value(r, conf->secret, &key) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
-    if (evp_md == NULL) {
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "Unknown cryptographic hash function \"%s\"", conf->algorithm.data);
-
-        return NGX_ERROR;
-    }
-
-    hmac.data = hmac_buf;
-    token.data = p;
-
-    HMAC(evp_md, key.data, key.len, value.data, value.len, hmac.data, (u_int *) &hmac.len);
-
-    ngx_encode_base64url(&token, &hmac);
-
-    v->data = token.data;
-    v->len = token.len;
-    v->valid = 1;
-    v->no_cacheable = 0;
-    v->not_found = 0;
-
-    return NGX_OK;
-
-not_found:
-
-    v->not_found = 1;
-
-    return NGX_OK;
-}
-
-static ngx_int_t
-ngx_http_secure_link_hmac_expires_variable(ngx_http_request_t *r,
-    ngx_http_variable_value_t *v, uintptr_t data)
-{
-    ngx_http_secure_link_hmac_ctx_t  *ctx;
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_secure_link_hmac_module);
-
-    if (ctx) {
-        v->len = ctx->expires.len;
-        v->valid = 1;
-        v->no_cacheable = 0;
-        v->not_found = 0;
-        v->data = ctx->expires.data;
-
-    } else {
-        v->not_found = 1;
-    }
-
-    return NGX_OK;
-}
 
 static void *
 ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
@@ -526,6 +381,21 @@ ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+typedef struct {
+    ngx_flag_t                 enable;
+    ngx_http_complex_value_t  *token;
+    ngx_http_complex_value_t  *time;
+    ngx_http_complex_value_t  *start;
+    ngx_http_complex_value_t  *end;
+    ngx_http_complex_value_t  *message;
+    ngx_http_complex_value_t  *secret;
+    ngx_uint_t                 time_mode;
+    ngx_str_t                  time_format;
+    time_t                     time_offset;
+    ngx_str_t                  algorithm;
+    ngx_str_t                  token_format;
+} ngx_http_secure_link_hmac_conf_t;
+
     /*
      * set by ngx_pcalloc():
      *
@@ -534,6 +404,8 @@ ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
      *     conf->secret = NULL;
      *     conf->algorithm = {0,NULL};
      */
+
+    conf->enable = NGX_CONF_UNSET;
 
     return conf;
 }
@@ -786,19 +658,38 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
 }
 
 
-static char *
-ngx_http_secure_link_hmac_check_time_zone(ngx_conf_t *cf,
-    ngx_command_t *cmd, void *conf)
+static ngx_int_t
+ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst, ngx_str_t *src)
 {
-    ngx_http_secure_link_hmac_conf_t *slcf = conf;
+    size_t      i, half_len;
+    u_char     *p;
+    ngx_int_t   n;
 
-    ngx_str_t   *value;
-    ngx_uint_t   i;
-    time_t       time_offset;
+    if (hex_str.len % 2 != 0) {
+        return NGX_ERROR;
+    }
 
-    value = cf->args->elts;
+    half_len = src->len / 2;
 
-    return NGX_CONF_OK;
+    if (dst->len < half_len) {
+        return NGX_ERROR;
+    }
+
+    p = src->data;
+    for (i = 0; i < half_len; i++) {
+
+        n = ngx_hextoi(p, 2);
+        if (n == NGX_ERROR || n > 255) {
+            return NGX_ERROR;
+        }
+
+        dst->data[i] = (u_char) n;
+        p += 2;
+    }
+
+    dst->len = half_len;
+
+    return NGX_OK;
 }
 
 
