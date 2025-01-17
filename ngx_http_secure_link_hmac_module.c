@@ -7,14 +7,14 @@
 #include <openssl/crypto.h>
 
 
-#define NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP    1
-#define NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP  2
-#define NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP 3
-#define NGX_HTTP_SECURE_LINK_HMAC_DATE         4
+#define NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP     1
+#define NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP   2
+#define NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP  3
+#define NGX_HTTP_SECURE_LINK_HMAC_DATE          4
 
-#define NGX_HTTP_SECURE_LINK_HMAC_BASE64URL    1
-#define NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST    2
-
+#define NGX_HTTP_SECURE_LINK_HMAC_HEX           1
+#define NGX_HTTP_SECURE_LINK_HMAC_BASE64URL     2
+#define NGX_HTTP_SECURE_LINK_HMAC_BINARY        3
 
 typedef struct {
     ngx_flag_t                 enable;
@@ -27,7 +27,7 @@ typedef struct {
     ngx_uint_t                 time_mode;
     ngx_str_t                  time_format;
     time_t                     time_offset;
-    ngx_uint_t                 token_format;
+    ngx_uint_t                 token_encoding;
     ngx_str_t                  algorithm;
 } ngx_http_secure_link_hmac_conf_t;
 
@@ -310,7 +310,7 @@ token:
     evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
     if (evp_md == NULL) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "Unknown cryptographic hash function \"%s\"", conf->algorithm.data);
+                       "unknown cryptographic hash function \"%s\"", conf->algorithm.data);
 
         return NGX_ERROR;
     }
@@ -322,7 +322,18 @@ token:
         return NGX_ERROR;
     }
 
-    if (conf->token_format == NGX_HTTP_SECURE_LINK_HMAC_BASE64URL) {
+    if (value.len = 0) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                      "secure link token is empty");
+        goto not_found;
+    }
+
+    if (conf->token_encoding == NGX_HTTP_SECURE_LINK_HMAC_HEX) {
+        if (ngx_http_secure_link_hmac_hex_decode(&hash, &value) != NGX_OK) {
+            goto not_found;
+        }
+
+    } else if (conf->token_encoding == NGX_HTTP_SECURE_LINK_HMAC_BASE64URL) {
 
         if (value.len > ngx_base64_encoded_length(hash.len)+2) {
             goto not_found;
@@ -333,9 +344,7 @@ token:
         }
 
     } else {
-        if (ngx_http_secure_link_hmac_hex_decode(&hash, &value) != NGX_OK) {
-            goto not_found;
-        }
+        hash = value;
     }
 
     if (hash.len != (u_int) EVP_MD_size(evp_md)) {
@@ -356,6 +365,8 @@ token:
     HMAC(evp_md, key.data, key.len, value.data, value.len, hmac_buf, &hmac_len);
 
     if (CRYPTO_memcmp(hash_buf, hmac_buf, EVP_MD_size(evp_md)) != 0) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                      "secure link token mismatch");
         goto not_found;
     }
 
@@ -395,13 +406,12 @@ ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
      *     conf->message = NULL;
      *     conf->secret = NULL;
      *     conf->time_format = { 0, NULL };
-     *     conf->token_format = { 0, NULL };
      *     conf->algorithm = { 0, NULL };
      */
 
     conf->enable = NGX_CONF_UNSET;
     conf->time_mode= NGX_CONF_UNSET_UINT;
-    conf->token_format = NGX_CONF_UNSET_UINT;
+    conf->token_encoding = NGX_CONF_UNSET_UINT;
     conf->time_offset = NGX_CONF_UNSET;
 
     return conf;
@@ -427,7 +437,7 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
     if (conf->token == NULL) {
         conf->token = prev->token;
-        ngx_conf_merge_uint_value(conf->token_format, prev->token_format, NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST);
+        ngx_conf_merge_uint_value(conf->token_encoding, prev->token_encoding, NGX_HTTP_SECURE_LINK_HMAC_HEX);
     }
 
     if (conf->message == NULL) {
@@ -534,7 +544,7 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
 
     for (i = 2; i < cf->args->nelts; i++) {
 
-        if (value[i].len > 7 && ngx_strncmp(value[i].data, "format=", 7) == 0) {
+        if (value[i].len > 7 && ngx_strncmp(value[i].data, "encoding=", 7) == 0) {
             s.len = value[i].len - 7;
             s.data = value[i].data + 7;
 
@@ -700,20 +710,23 @@ ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
 
     if (cf->args->nelts == 3) {
 
-        if (ngx_strncmp(value[2].data, "format=hexdigest", 17) == 0) {
-            slcf->token_format = NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST;
+        if (ngx_strncmp(value[2].data, "encoding=hex", 20) == 0) {
+            slcf->token_encoding = NGX_HTTP_SECURE_LINK_HMAC_HEX;
 
-        } else if (ngx_strncmp(value[2].data, "format=base64url", 17) == 0) {
-            slcf->token_format = NGX_HTTP_SECURE_LINK_HMAC_BASE64URL;
+        } else if (ngx_strncmp(value[2].data, "encoding=base64url", 18) == 0) {
+            slcf->token_encoding = NGX_HTTP_SECURE_LINK_HMAC_BASE64URL;
+
+        } else if (ngx_strncmp(value[2].data, "encoding=binary", 15) == 0) {
+            slcf->token_encoding = NGX_HTTP_SECURE_LINK_HMAC_BINARY;
 
         } else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                               "invalid token format,\"%V\"", &value[2]);
+                               "invalid token format: \"%V\"", &value[2]);
             return NGX_CONF_ERROR;
         }
 
     } else {
-        slcf->token_format = NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST;
+        slcf->token_encoding = NGX_HTTP_SECURE_LINK_HMAC_HEX;
     }
 
     return NGX_CONF_OK;
