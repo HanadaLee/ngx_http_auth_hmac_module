@@ -52,7 +52,7 @@ static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
 
     { ngx_string("secure_link_hmac"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_http_set_flag_slot,
+      ngx_conf_set_flag_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_secure_link_hmac_conf_t, enable),
       NULL },
@@ -142,14 +142,13 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
     ngx_http_secure_link_hmac_conf_t  *conf;
+
     const EVP_MD                 *evp_md;
-    u_char                       *p, *last;
     ngx_str_t                     value;
     ngx_int_t                     is_negative;
     time_t                        timestamp, now, start, end;
     ngx_int_t                     start_is_valid, end_is_valid;
     ngx_tm_t                      tm;
-    ngx_uint_t                    i;
     ngx_str_t                     hash, key;
     u_char                        hash_buf[EVP_MAX_MD_SIZE], hmac_buf[EVP_MAX_MD_SIZE];
     u_int                         hmac_len;
@@ -296,8 +295,8 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     }
 
     now = ngx_time();
-    if (start_is_valid && now + start < timestamp
-        || end_is_valid && now + end > timestamp)
+    if (start_is_valid && (now + start < timestamp)
+        || end_is_valid && (now + end > timestamp))
     {
         ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
                         "secure link expiresd");
@@ -419,14 +418,14 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         conf->time = prev->time;
         conf->start = prev->start;
         conf->end = prev->end;
-        ngx_conf_merge_value(conf->time_mode, prev->time_mode, NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP);
+        ngx_conf_merge_uint_value(conf->time_mode, prev->time_mode, NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP);
         ngx_conf_merge_str_value(conf->time_format, prev->time_format, "%s");
         ngx_conf_merge_value(conf->time_offset, prev->time_offset, 0);
     }
 
     if (conf->token == NULL) {
         conf->token = prev->token;
-        ngx_conf_merge_value(conf->token_format, prev->token_format, NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST);
+        ngx_conf_merge_uint_value(conf->token_format, prev->token_format, NGX_HTTP_SECURE_LINK_HMAC_HEXDIGEST);
     }
 
     if (conf->message == NULL) {
@@ -474,8 +473,8 @@ ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s)
         }
 
         while (len--) {
-            if (!((*p >= '0' && *p <= '9') ||
-                  || (*p >= 'a' && *p <= 'f') ||
+            if (!((*p >= '0' && *p <= '9')
+                  || (*p >= 'a' && *p <= 'f')
                   || (*p >= 'A' && *p <= 'F')))
             {
                 return 0;
