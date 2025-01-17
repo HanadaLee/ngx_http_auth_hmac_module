@@ -170,6 +170,7 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         goto token;
     }
 
+    start = 0;
     if (conf->start == NULL) {
         start_is_valid = 0;
 
@@ -208,6 +209,7 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
         }
     }
 
+    end = 0;
     if (conf->end == NULL) {
         end_is_valid = 0;
 
