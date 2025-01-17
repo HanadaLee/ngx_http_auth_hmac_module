@@ -39,7 +39,7 @@ static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
 
 static ngx_int_t ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst,
-    ngx_str_t *src)
+    ngx_str_t *src);
 static ngx_int_t ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s);
 static char *ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
@@ -128,10 +128,12 @@ ngx_module_t  ngx_http_secure_link_hmac_module = {
 
 
 static ngx_http_variable_t ngx_http_secure_link_hmac_vars[] = {
-    { ngx_string("secure_link_hmac"), NULL,
-      ngx_http_secure_link_hmac_variable, 0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
-    { ngx_null_string, NULL, NULL, 0, 0, 0}
+    { ngx_string("secure_link_hmac"), NULL,
+      ngx_http_secure_link_hmac_variable,
+      0, NGX_HTTP_VAR_CHANGEABLE, 0 },
+
+      ngx_http_null_variable
 };
 
 
