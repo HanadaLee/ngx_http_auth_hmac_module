@@ -322,7 +322,7 @@ token:
         return NGX_ERROR;
     }
 
-    if (value.len = 0) {
+    if (value.len == 0) {
         ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
                       "secure link token is empty");
         goto not_found;
