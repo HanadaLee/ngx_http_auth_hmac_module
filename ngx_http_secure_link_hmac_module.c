@@ -295,11 +295,11 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     }
 
     now = ngx_time();
-    if (start_is_valid && (now + start < timestamp)
-        || end_is_valid && (now + end > timestamp))
+    if ((start_is_valid && (now + start < timestamp))
+        || (end_is_valid && (now + end > timestamp)))
     {
         ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
-                        "secure link expiresd");
+                        "secure link expired");
         goto not_found;
     }
 
@@ -638,7 +638,7 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
             s.data = value[i].data + 10;
 
             if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
-                if (!ngx_http_secure_link_hmac_is_valid_number(&s)) {
+                if (!ngx_http_secure_link_hmac_is_valid_num(&s)) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                         "invalid numeric value in end value[i]eter \"%V\"", &s);
                     return NGX_CONF_ERROR;
