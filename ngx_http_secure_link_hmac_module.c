@@ -151,7 +151,7 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     ngx_int_t                     start_is_valid, end_is_valid;
     ngx_tm_t                      tm;
     ngx_str_t                     hash, key;
-    u_char                        hash_buf[EVP_MAX_MD_SIZE]
+    u_char                        hash_buf[EVP_MAX_MD_SIZE];
     u_char                        hmac_buf[EVP_MAX_MD_SIZE];
     u_int                         hmac_len;
 
