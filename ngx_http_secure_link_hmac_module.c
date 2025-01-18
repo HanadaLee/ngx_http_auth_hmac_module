@@ -743,16 +743,16 @@ ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
 
     if (cf->args->nelts == 3) {
 
-        if (ngx_strncmp(value[2].data, "digest=hex", 11) == 0) {
+        if (ngx_strncmp(value[2].data, "digest=hex", 10) == 0) {
             slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_HEX;
 
-        } else if (ngx_strncmp(value[2].data, "digest=base64", 14) == 0) {
+        } else if (ngx_strncmp(value[2].data, "digest=base64", 13) == 0) {
             slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BASE64;
 
-        } else if (ngx_strncmp(value[2].data, "digest=base64url", 17) == 0) {
+        } else if (ngx_strncmp(value[2].data, "digest=base64url", 16) == 0) {
             slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BASE64URL;
 
-        } else if (ngx_strncmp(value[2].data, "digest=bin", 14) == 0) {
+        } else if (ngx_strncmp(value[2].data, "digest=bin", 10) == 0) {
             slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BIN;
 
         } else {
