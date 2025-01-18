@@ -36,16 +36,24 @@ Usage:
 
 Message to be hashed is defined by `secure_link_hmac_message`, `secret_key` is given by `secure_link_hmac_secret`, and hashing algorithm H is defined by `secure_link_hmac_algorithm`.
 
-For improved security the timestamp in ISO 8601 the format `2017-12-08T07:54:59+00:00` (one possibility according to ISO 8601) or as `Unix Timestamp` should be appended to the message to be hashed.
+For improved security, the time or a timestamp (depending on the date format specified by format parameter) should be appended to the message to be hashed.
 
-It is possible to create links with limited lifetime. This is defined by an optional parameter. If the expiration period is zero or it is not specified, a link has the unlimited lifetime.
+It is possible to create links with limited lifetime. This is defined by optional parameters range_start or range_end. If the expiration period is not specified, a link has the unlimited lifetime.
 
 Configuration example for server side.
 
 ```nginx
 location ^~ /files/ {
-    # Variable to be passed are secure token, timestamp, expiration period (optional)
-    secure_link_hmac "$arg_st,$arg_ts,$arg_e";
+    # Enables the feature, if disabled, $secure_link_hmac will always be empty
+    secure_link_hmac on;
+
+    # Set the time value used for checking.
+    # You can set the expiration time range, the format of the time value, and the time zone of the time value
+    secure_link_hmac_check_time $arg_ts range_end=$arg_e format=%s;
+
+    # Set the token value used for checking
+    # Available formats are hex (default), base64, base64url and bin
+    secure_link_hmac_check_token $arg_st format=hex;
 
     # Secret key
     secure_link_hmac_secret "my_secret_key";
@@ -62,14 +70,14 @@ location ^~ /files/ {
     # - If the hash is correct but the link has already expired then $secure_link_hmac is "0".
     # - If the hash is correct and the link has not expired then $secure_link_hmac is "1".
     if ($secure_link_hmac != "1") {
-        return 404;
+        return 403;
     }
 
     rewrite ^/files/(.*)$ /files/$1 break;
 }
 ```
 
-Application side should use a standard hash_hmac function to generate hash, which then needs to be base64url encoded. Example in Perl below.
+Application side should use a standard hash_hmac function to generate hash, which then needs to be hex or base64url encoded. Example in Perl below.
 
 #### Variable $data contains secure token, timestamp in ISO 8601 format, and expiration period in seconds
 
@@ -87,8 +95,14 @@ perl_set $secure_token '
         my $timestamp = strftime("%Y-%m-%dT%H:%M:%S", localtime($now)) . $tz;
         my $r = shift;
         my $data = $r->uri;
-        my $digest = hmac_sha256_base64($data . "|" . $timestamp . "|" . $expire,  $key);
-        $digest =~ tr(+/)(-_);
+
+        # hex
+        my $hex_digest = unpack("H*", $digest);
+
+        # base64url
+        # my $digest = hmac_sha256_base64($data . "|" . $timestamp . "|" . $expire,  $key);
+        # $digest =~ tr(+/)(-_);
+
         $data = "st=" . $digest . "&ts=" . $timestamp . "&e=" . $expire;
         return $data;
     }
@@ -104,9 +118,12 @@ $algo = 'sha256';
 $timestamp = date('c');
 $unixtimestamp = time();
 $stringtosign = "/files/top_secret.pdf|{$unixtimestamp}|{$expire}";
-$hashmac = base64_encode(hash_hmac($algo, $stringtosign, $secret, true));
-$hashmac = strtr($hashmac, '+/', '-_');
-$hashmac = str_replace('=', '', $hashmac);
+// hex
+$hashmac = bin2hex(hash_hmac($algo, $stringtosign, $secret, true));
+// base64url
+// $hashmac = base64_encode(hash_hmac($algo, $stringtosign, $secret, true));
+// $hashmac = strtr($hashmac, '+/', '-_');
+// $hashmac = str_replace('=', '', $hashmac);
 $host = $_SERVER['HTTP_HOST'];
 $loc = "https://{$host}/files/top_secret.pdf?st={$hashmac}&ts={$unixtimestamp}&e={$expire}";
 ```
@@ -119,10 +136,13 @@ const secret = 'my_very_secret_key';
 const expire = 60;
 const unixTimestamp = Math.round(Date.now() / 1000.);
 const stringToSign = `/files/top_secret.pdf|${unixTimestamp}|${expire}`;
-const hashmac = crypto.createHmac('sha256', secret).update(stringToSign).digest('base64')
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
+// hex
+const hashmac = crypto.createHmac('sha256', secret).update(stringToSign).digest('hex')
+// base64url
+// const hashmac = crypto.createHmac('sha256', secret).update(stringToSign).digest('base64')
+//       .replace(/=/g, '')
+//       .replace(/\+/g, '-')
+//       .replace(/\//g, '_');
 const loc = `https://host/files/top_secret.pdf?st=${hashmac}&ts=${unixTimestamp}&e=${expire}`;
 ```
 
@@ -136,33 +156,17 @@ TIME_STAMP="$(date -d "today + 0 minutes" +%s)";
 EXPIRES="3600"; # seconds
 URL="/file/my_secret_file.txt"
 ST="$URL|$TIME_STAMP|$EXPIRES"
-TOKEN="$(echo -n $ST | openssl dgst -sha256 -hmac $SECRET -binary | openssl base64 | tr +/ -_ | tr -d =)"
+# hex
+TOKEN="$(echo -n $ST | openssl dgst -sha256 -hmac $SECRET | awk '{print $1}')"
+# Base64url
+# TOKEN="$(echo -n $ST | openssl dgst -sha256 -hmac $SECRET -binary | openssl base64 | tr +/ -_ | tr -d =)"
 
 echo "http://127.0.0.1$URL?st=$TOKEN&ts=$TIME_STAMP&e=$EXPIRES"
 ```
 
-It is also possible to use this module with a Nginx acting as proxy server.
-
-The string to be signed is defined in `secure_link_hmac_message`, the `secure_link_hmac_token` variable contains then a secure token to be passed to backend server.
-
-```nginx
-location ^~ /backend_location/ {
-    set $expire 60;
-
-    secure_link_hmac_message "$uri|$time_iso8601|$expire";
-    secure_link_hmac_secret "my_very_secret_key";
-    secure_link_hmac_algorithm sha256;
-
-    proxy_pass "http://backend_server$uri?st=$secure_link_hmac_token&ts=$time_iso8601&e=$expire";
-}
-```
-
-
 Embedded Variables
 ==================
 * `$secure_link_hmac` -
-* `$secure_link_hmac_token` -
-* `$secure_link_hmac_expires` - The lifetime of a link passed in a request.
 
 
 Contributing:
