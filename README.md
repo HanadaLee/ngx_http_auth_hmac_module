@@ -88,7 +88,7 @@ perl_set $secure_token '
         use POSIX qw(strftime);
 
         my $now = time();
-        my $key = "my_very_secret_key";
+        my $secret = "my_very_secret_key";
         my $expire = 60;
         my $tz = strftime("%z", localtime($now));
         $tz =~ s/(\d{2})(\d{2})/$1:$2/;
@@ -97,10 +97,12 @@ perl_set $secure_token '
         my $data = $r->uri;
 
         # hex
-        my $hex_digest = unpack("H*", $digest);
+        my $string_to_hash = $data . "|" . $timestamp . "|" . $expire;
+        my $digest_binary = hmac_sha256($string_to_hash, $secret);
+        my $digest = unpack("H*", $digest_binary);
 
         # base64url
-        # my $digest = hmac_sha256_base64($data . "|" . $timestamp . "|" . $expire,  $key);
+        # my $digest = hmac_sha256_base64($data . "|" . $timestamp . "|" . $expire,  $secret);
         # $digest =~ tr(+/)(-_);
 
         $data = "st=" . $digest . "&ts=" . $timestamp . "&e=" . $expire;
