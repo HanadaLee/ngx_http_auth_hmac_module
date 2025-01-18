@@ -67,7 +67,6 @@ location ^~ /files/ {
     # In production environment, we should not reveal to potential attacker
     # why hmac authentication has failed
     # - If the hash is incorrect then $secure_link_hmac is a NULL string.
-    # - If the hash is correct but the link has already expired then $secure_link_hmac is "0".
     # - If the hash is correct and the link has not expired then $secure_link_hmac is "1".
     if ($secure_link_hmac != "1") {
         return 403;
@@ -168,7 +167,7 @@ echo "http://127.0.0.1$URL?st=$TOKEN&ts=$TIME_STAMP&e=$EXPIRES"
 
 Embedded Variables
 ==================
-* `$secure_link_hmac` -
+* `$secure_link_hmac` - If the hash is correct and the link has not expired then $secure_link_hash is "1". Otherwise, it is null.
 
 
 Contributing:
