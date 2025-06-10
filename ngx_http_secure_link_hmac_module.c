@@ -7,15 +7,15 @@
 #include <openssl/crypto.h>
 
 
-#define NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP     1
-#define NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP   2
-#define NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP  3
-#define NGX_HTTP_SECURE_LINK_HMAC_DATE          4
+#define NGX_HTTP_AUTH_HMAC_TIMESTAMP     1
+#define NGX_HTTP_AUTH_HMAC_MSTIMESTAMP   2
+#define NGX_HTTP_AUTH_HMAC_HEXTIMESTAMP  3
+#define NGX_HTTP_AUTH_HMAC_DATE          4
 
-#define NGX_HTTP_SECURE_LINK_HMAC_HEX           1
-#define NGX_HTTP_SECURE_LINK_HMAC_BASE64URL     2
-#define NGX_HTTP_SECURE_LINK_HMAC_BASE64        3
-#define NGX_HTTP_SECURE_LINK_HMAC_BIN           4
+#define NGX_HTTP_AUTH_HMAC_HEX           1
+#define NGX_HTTP_AUTH_HMAC_BASE64URL     2
+#define NGX_HTTP_AUTH_HMAC_BASE64        3
+#define NGX_HTTP_AUTH_HMAC_BIN           4
 
 typedef struct {
     ngx_flag_t                 enable;
@@ -275,10 +275,10 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         goto not_found;
     }
 
-    if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP) {
+    if (conf->time_mode == NGX_HTTP_AUTH_HMAC_TIMESTAMP) {
         timestamp = (time_t) ngx_atoi(value.data, value.len);
 
-    } else if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP) {
+    } else if (conf->time_mode == NGX_HTTP_AUTH_HMAC_MSTIMESTAMP) {
 
         if (value.len < 4) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -289,10 +289,10 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         /* cut off the milliseconds part */
         timestamp = (time_t) ngx_atoi(value.data , value.len - 3);
 
-    } else if (conf->time_mode == NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP) {
+    } else if (conf->time_mode == NGX_HTTP_AUTH_HMAC_HEXTIMESTAMP) {
         timestamp = (time_t) ngx_hextoi(value.data, value.len);
 
-    } else { /* NGX_HTTP_SECURE_LINK_HMAC_DATE */
+    } else { /* NGX_HTTP_AUTH_HMAC_DATE */
         ngx_memzero(&tm, sizeof(ngx_tm_t));
 
         if (strptime((char *) value.data,
@@ -353,14 +353,14 @@ token:
         goto not_found;
     }
 
-    if (conf->token_digest == NGX_HTTP_SECURE_LINK_HMAC_HEX) {
+    if (conf->token_digest == NGX_HTTP_AUTH_HMAC_HEX) {
         if (ngx_http_auth_hmac_hex_decode(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                         "secure link hmac: token hex decode fail");
             goto not_found;
         }
 
-    } else if (conf->token_digest == NGX_HTTP_SECURE_LINK_HMAC_BASE64) {
+    } else if (conf->token_digest == NGX_HTTP_AUTH_HMAC_BASE64) {
 
         if (ngx_decode_base64(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -368,7 +368,7 @@ token:
             goto not_found;
         }
 
-    } else if (conf->token_digest == NGX_HTTP_SECURE_LINK_HMAC_BASE64URL) {
+    } else if (conf->token_digest == NGX_HTTP_AUTH_HMAC_BASE64URL) {
 
         if (ngx_decode_base64url(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -466,7 +466,7 @@ ngx_http_auth_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         conf->start = prev->start;
         conf->end = prev->end;
         ngx_conf_merge_uint_value(conf->time_mode,
-            prev->time_mode, NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP);
+            prev->time_mode, NGX_HTTP_AUTH_HMAC_TIMESTAMP);
         ngx_conf_merge_str_value(conf->time_format, prev->time_format, "%s");
         ngx_conf_merge_value(conf->time_offset, prev->time_offset, 0);
     }
@@ -474,7 +474,7 @@ ngx_http_auth_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     if (conf->token == NULL) {
         conf->token = prev->token;
         ngx_conf_merge_uint_value(conf->token_digest,
-            prev->token_digest, NGX_HTTP_SECURE_LINK_HMAC_HEX);
+            prev->token_digest, NGX_HTTP_AUTH_HMAC_HEX);
     }
 
     if (conf->message == NULL) {
@@ -588,22 +588,22 @@ ngx_http_auth_hmac_check_time(ngx_conf_t *cf,
             s.data = value[i].data + 7;
 
             if (s.len == 2 && s.data[0] == '%' && s.data[1] == 's') {
-                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_TIMESTAMP;
+                slcf->time_mode = NGX_HTTP_AUTH_HMAC_TIMESTAMP;
                 continue;
             }
 
             if (s.len == 3 && s.data[0] == '%'
                 && s.data[1] == 'm' && s.data[2] == 's') {
-                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_MSTIMESTAMP;
+                slcf->time_mode = NGX_HTTP_AUTH_HMAC_MSTIMESTAMP;
                 continue;
             }
 
             if (s.len == 2 && s.data[0] == '%' && s.data[1] == 'x') {
-                slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_HEXTIMESTAMP;
+                slcf->time_mode = NGX_HTTP_AUTH_HMAC_HEXTIMESTAMP;
                 continue;
             }
 
-            slcf->time_mode = NGX_HTTP_SECURE_LINK_HMAC_DATE;
+            slcf->time_mode = NGX_HTTP_AUTH_HMAC_DATE;
             slcf->time_format = s;
 
             continue;
@@ -756,16 +756,16 @@ ngx_http_auth_hmac_check_token(ngx_conf_t *cf,
     if (cf->args->nelts == 3) {
 
         if (ngx_strncmp(value[2].data, "digest=hex", 10) == 0) {
-            slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_HEX;
+            slcf->token_digest = NGX_HTTP_AUTH_HMAC_HEX;
 
         } else if (ngx_strncmp(value[2].data, "digest=base64url", 16) == 0) {
-            slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BASE64URL;
+            slcf->token_digest = NGX_HTTP_AUTH_HMAC_BASE64URL;
 
         } else if (ngx_strncmp(value[2].data, "digest=base64", 13) == 0) {
-            slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BASE64;
+            slcf->token_digest = NGX_HTTP_AUTH_HMAC_BASE64;
 
         } else if (ngx_strncmp(value[2].data, "digest=bin", 10) == 0) {
-            slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_BIN;
+            slcf->token_digest = NGX_HTTP_AUTH_HMAC_BIN;
 
         } else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -774,7 +774,7 @@ ngx_http_auth_hmac_check_token(ngx_conf_t *cf,
         }
 
     } else {
-        slcf->token_digest = NGX_HTTP_SECURE_LINK_HMAC_HEX;
+        slcf->token_digest = NGX_HTTP_AUTH_HMAC_HEX;
     }
 
     return NGX_CONF_OK;
