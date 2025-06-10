@@ -1,4 +1,4 @@
-Nginx Secure Link HMAC Module
+Nginx Auth HMAC Module
 =============================
 
 Description:
@@ -20,11 +20,11 @@ Modify your compile of Nginx by adding the following directive (modified to suit
 
 Static module (built-in nginx binary)
 
-    ./configure --add-module=/absolute/path/to/ngx_http_secure_link_hmac_module
+    ./configure --add-module=/absolute/path/to/ngx_http_auth_hmac_module
 
-Dynamic nginx module `ngx_http_secure_link_hmac_module.so` module
+Dynamic nginx module `ngx_http_auth_hmac_module.so` module
 
-    ./configure --with-compat --add-dynamic-module=/absolute/path/to/ngx_http_secure_link_hmac_module
+    ./configure --with-compat --add-dynamic-module=/absolute/path/to/ngx_http_auth_hmac_module
 
 Build Nginx
 
@@ -34,7 +34,7 @@ Build Nginx
 Usage:
 ======
 
-Message to be hashed is defined by `secure_link_hmac_message`, `secret_key` is given by `secure_link_hmac_secret`, and hashing algorithm H is defined by `secure_link_hmac_algorithm`.
+Message to be hashed is defined by `auth_hmac_message`, `secret_key` is given by `auth_hmac_secret`, and hashing algorithm H is defined by `auth_hmac_algorithm`.
 
 For improved security, the time or a timestamp (depending on the date format specified by format parameter) should be appended to the message to be hashed.
 
@@ -44,31 +44,31 @@ Configuration example for server side.
 
 ```nginx
 location ^~ /files/ {
-    # Enables the feature, if disabled, $secure_link_hmac will always be empty
-    secure_link_hmac on;
+    # Enables the feature, if disabled, $auth_hmac will always be empty
+    auth_hmac on;
 
     # Set the time value used for checking.
     # You can set the expiration time range, the format of the time value, and the time zone of the time value
-    secure_link_hmac_check_time $arg_ts range_end=$arg_e format=%s;
+    auth_hmac_check_time $arg_ts range_end=$arg_e format=%s;
 
     # Set the token value used for checking
     # Available formats are hex (default), base64, base64url and bin
-    secure_link_hmac_check_token $arg_st format=hex;
+    auth_hmac_check_token $arg_st format=hex;
 
     # Secret key
-    secure_link_hmac_secret "my_secret_key";
+    auth_hmac_secret "my_secret_key";
 
     # Message to be verified
-    secure_link_hmac_message "$uri|$arg_ts|$arg_e";
+    auth_hmac_message "$uri|$arg_ts|$arg_e";
 
     # Cryptographic hash function to be used
-    secure_link_hmac_algorithm sha256;
+    auth_hmac_algorithm sha256;
 
     # In production environment, we should not reveal to potential attacker
     # why hmac authentication has failed
-    # - If the hash is incorrect then $secure_link_hmac is a NULL string.
-    # - If the hash is correct and the link has not expired then $secure_link_hmac is "1".
-    if ($secure_link_hmac != "1") {
+    # - If the hash is incorrect then $auth_hmac is a NULL string.
+    # - If the hash is correct and the link has not expired then $auth_hmac is "1".
+    if ($auth_hmac != "1") {
         return 403;
     }
 
@@ -167,12 +167,12 @@ echo "http://127.0.0.1$URL?st=$TOKEN&ts=$TIME_STAMP&e=$EXPIRES"
 
 Embedded Variables
 ==================
-* `$secure_link_hmac` - If the hash is correct and the link has not expired then $secure_link_hash is "1". Otherwise, it is null.
+* `$auth_hmac` - If the hash is correct and the link has not expired then $secure_link_hash is "1". Otherwise, it is null.
 
 
 Contributing:
 =============
 
-Git source repositories: http://github.com/hanadalee/ngx_http_secure_link_hmac_module/tree/master
+Git source repositories: http://github.com/hanadalee/ngx_http_auth_hmac_module/tree/master
 
 Please feel free to fork the project at GitHub and submit pull requests or patches.

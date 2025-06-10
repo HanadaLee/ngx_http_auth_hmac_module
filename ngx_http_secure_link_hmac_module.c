@@ -30,75 +30,75 @@ typedef struct {
     time_t                     time_offset;
     ngx_uint_t                 token_digest;
     ngx_str_t                  algorithm;
-} ngx_http_secure_link_hmac_conf_t;
+} ngx_http_auth_hmac_conf_t;
 
 
-static ngx_int_t ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
+static ngx_int_t ngx_http_auth_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
-static void *ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf);
-static char *ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent,
+static void *ngx_http_auth_hmac_create_conf(ngx_conf_t *cf);
+static char *ngx_http_auth_hmac_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
 
-static ngx_int_t ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst,
+static ngx_int_t ngx_http_auth_hmac_hex_decode(ngx_str_t *dst,
     ngx_str_t *src);
-static ngx_int_t ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s);
-static char *ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
+static ngx_int_t ngx_http_auth_hmac_is_valid_num(ngx_str_t *s);
+static char *ngx_http_auth_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
-static char *ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
+static char *ngx_http_auth_hmac_check_token(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
-static ngx_int_t ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_auth_hmac_add_variables(ngx_conf_t *cf);
 
 
-static ngx_command_t  ngx_http_secure_link_hmac_commands[] = {
+static ngx_command_t  ngx_http_auth_hmac_commands[] = {
 
-    { ngx_string("secure_link_hmac"),
+    { ngx_string("auth_hmac"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_flag_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, enable),
+      offsetof(ngx_http_auth_hmac_conf_t, enable),
       NULL },
 
-    { ngx_string("secure_link_hmac_check_time"),
+    { ngx_string("auth_hmac_check_time"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
-      ngx_http_secure_link_hmac_check_time,
+      ngx_http_auth_hmac_check_time,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
 
-    { ngx_string("secure_link_hmac_check_token"),
+    { ngx_string("auth_hmac_check_token"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
-      ngx_http_secure_link_hmac_check_token,
+      ngx_http_auth_hmac_check_token,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
 
-    { ngx_string("secure_link_hmac_message"),
+    { ngx_string("auth_hmac_message"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, message),
+      offsetof(ngx_http_auth_hmac_conf_t, message),
       NULL },
 
-    { ngx_string("secure_link_hmac_secret"),
+    { ngx_string("auth_hmac_secret"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, secret),
+      offsetof(ngx_http_auth_hmac_conf_t, secret),
       NULL },
 
-    { ngx_string("secure_link_hmac_algorithm"),
+    { ngx_string("auth_hmac_algorithm"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_secure_link_hmac_conf_t, algorithm),
+      offsetof(ngx_http_auth_hmac_conf_t, algorithm),
       NULL },
 
       ngx_null_command
 };
 
 
-static ngx_http_module_t  ngx_http_secure_link_hmac_module_ctx = {
-    ngx_http_secure_link_hmac_add_variables,    /* preconfiguration */
+static ngx_http_module_t  ngx_http_auth_hmac_module_ctx = {
+    ngx_http_auth_hmac_add_variables,           /* preconfiguration */
     NULL,                                       /* postconfiguration */
 
     NULL,                                       /* create main configuration */
@@ -107,15 +107,15 @@ static ngx_http_module_t  ngx_http_secure_link_hmac_module_ctx = {
     NULL,                                       /* create server configuration */
     NULL,                                       /* merge server configuration */
 
-    ngx_http_secure_link_hmac_create_conf,      /* create location configuration */
-    ngx_http_secure_link_hmac_merge_conf        /* merge location configuration */
+    ngx_http_auth_hmac_create_conf,             /* create location configuration */
+    ngx_http_auth_hmac_merge_conf               /* merge location configuration */
 };
 
 
-ngx_module_t  ngx_http_secure_link_hmac_module = {
+ngx_module_t  ngx_http_auth_hmac_module = {
     NGX_MODULE_V1,
-    &ngx_http_secure_link_hmac_module_ctx,      /* module context */
-    ngx_http_secure_link_hmac_commands,         /* module directives */
+    &ngx_http_auth_hmac_module_ctx,             /* module context */
+    ngx_http_auth_hmac_commands,                /* module directives */
     NGX_HTTP_MODULE,                            /* module type */
     NULL,                                       /* init master */
     NULL,                                       /* init module */
@@ -128,10 +128,10 @@ ngx_module_t  ngx_http_secure_link_hmac_module = {
 };
 
 
-static ngx_http_variable_t ngx_http_secure_link_hmac_vars[] = {
+static ngx_http_variable_t ngx_http_auth_hmac_vars[] = {
 
-    { ngx_string("secure_link_hmac"), NULL,
-      ngx_http_secure_link_hmac_variable,
+    { ngx_string("auth_hmac"), NULL,
+      ngx_http_auth_hmac_variable,
       0, NGX_HTTP_VAR_CHANGEABLE, 0 },
 
       ngx_http_null_variable
@@ -139,10 +139,10 @@ static ngx_http_variable_t ngx_http_secure_link_hmac_vars[] = {
 
 
 static ngx_int_t
-ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
+ngx_http_auth_hmac_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_secure_link_hmac_conf_t  *conf;
+    ngx_http_auth_hmac_conf_t  *conf;
 
     const EVP_MD                 *evp_md;
     ngx_str_t                     value;
@@ -155,7 +155,7 @@ ngx_http_secure_link_hmac_variable(ngx_http_request_t *r,
     u_char                        hmac_buf[EVP_MAX_MD_SIZE];
     u_int                         hmac_len;
 
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_secure_link_hmac_module);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_auth_hmac_module);
 
     if (!conf->enable
         || conf->token == NULL
@@ -354,7 +354,7 @@ token:
     }
 
     if (conf->token_digest == NGX_HTTP_SECURE_LINK_HMAC_HEX) {
-        if (ngx_http_secure_link_hmac_hex_decode(&hash, &value) != NGX_OK) {
+        if (ngx_http_auth_hmac_hex_decode(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                         "secure link hmac: token hex decode fail");
             goto not_found;
@@ -422,11 +422,11 @@ not_found:
 
 
 static void *
-ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
+ngx_http_auth_hmac_create_conf(ngx_conf_t *cf)
 {
-    ngx_http_secure_link_hmac_conf_t  *conf;
+    ngx_http_auth_hmac_conf_t  *conf;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_secure_link_hmac_conf_t));
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_auth_hmac_conf_t));
     if (conf == NULL) {
         return NULL;
     }
@@ -454,10 +454,10 @@ ngx_http_secure_link_hmac_create_conf(ngx_conf_t *cf)
 
 
 static char *
-ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
+ngx_http_auth_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 {
-    ngx_http_secure_link_hmac_conf_t *prev = parent;
-    ngx_http_secure_link_hmac_conf_t *conf = child;
+    ngx_http_auth_hmac_conf_t *prev = parent;
+    ngx_http_auth_hmac_conf_t *conf = child;
 
     ngx_conf_merge_value(conf->enable, prev->enable, 0);
 
@@ -492,7 +492,7 @@ ngx_http_secure_link_hmac_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
 
 static ngx_int_t
-ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s)
+ngx_http_auth_hmac_is_valid_num(ngx_str_t *s)
 {
     u_char      *p;
     size_t       len;
@@ -546,10 +546,10 @@ ngx_http_secure_link_hmac_is_valid_num(ngx_str_t *s)
 
 
 static char *
-ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
+ngx_http_auth_hmac_check_time(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf)
 {
-    ngx_http_secure_link_hmac_conf_t *slcf = conf;
+    ngx_http_auth_hmac_conf_t *slcf = conf;
 
     ngx_uint_t                          i, j;
     ngx_str_t                          *value;
@@ -664,7 +664,7 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
             s.data = value[i].data + 12;
 
             if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
-                if (!ngx_http_secure_link_hmac_is_valid_num(&s)) {
+                if (!ngx_http_auth_hmac_is_valid_num(&s)) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                         "invalid numeric value in start parameter \"%V\"", &s);
                     return NGX_CONF_ERROR;
@@ -695,7 +695,7 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
             s.data = value[i].data + 10;
 
             if (ngx_strlchr(s.data, s.data + s.len, '$') == NULL) {
-                if (!ngx_http_secure_link_hmac_is_valid_num(&s)) {
+                if (!ngx_http_auth_hmac_is_valid_num(&s)) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                         "invalid numeric value in end parameter \"%V\"", &s);
                     return NGX_CONF_ERROR;
@@ -723,10 +723,10 @@ ngx_http_secure_link_hmac_check_time(ngx_conf_t *cf,
 
 
 static char *
-ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
+ngx_http_auth_hmac_check_token(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf)
 {
-    ngx_http_secure_link_hmac_conf_t *slcf = conf;
+    ngx_http_auth_hmac_conf_t *slcf = conf;
 
     ngx_str_t                          *value;
     ngx_http_compile_complex_value_t    ccv;
@@ -782,7 +782,7 @@ ngx_http_secure_link_hmac_check_token(ngx_conf_t *cf,
 
 
 static ngx_int_t
-ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst, ngx_str_t *src)
+ngx_http_auth_hmac_hex_decode(ngx_str_t *dst, ngx_str_t *src)
 {
     size_t      i, half_len;
     u_char     *p;
@@ -817,11 +817,11 @@ ngx_http_secure_link_hmac_hex_decode(ngx_str_t *dst, ngx_str_t *src)
 
 
 static ngx_int_t
-ngx_http_secure_link_hmac_add_variables(ngx_conf_t *cf)
+ngx_http_auth_hmac_add_variables(ngx_conf_t *cf)
 {
     ngx_http_variable_t  *var, *v;
 
-    for (v = ngx_http_secure_link_hmac_vars; v->name.len; v++) {
+    for (v = ngx_http_auth_hmac_vars; v->name.len; v++) {
         var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (var == NULL) {
             return NGX_ERROR;
