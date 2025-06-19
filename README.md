@@ -4,7 +4,7 @@ Nginx Auth HMAC Module
 Description:
 ============
 
-The Nginx secure link HMAC module enhances the security and functionality of the standard secure link module.  
+The Nginx auth HMAC module enhances the security and functionality of the standard secure link module.  
 Secure token is created using secure HMAC construction with an arbitrary hash algorithm supported by OpenSSL, e.g.:
 `blake2b512`, `blake2s256`, `gost`, `md4`, `md5`, `mdc2`, `rmd160`, `sha1`, `sha224`, `sha256`,
 `sha3-224`, `sha3-256`, `sha3-384`, `sha3-512`, `sha384`, `sha512`, `sha512-224`, `sha512-256`, `shake128`, `shake256`, `sm3`.

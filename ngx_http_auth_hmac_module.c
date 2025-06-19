@@ -163,7 +163,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         || conf->secret == NULL)
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "secure link hmac: disabled");
+                    "auth hmac: disabled");
         goto not_found;
     }
 
@@ -261,7 +261,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         || (start_is_valid == 1 && end_is_valid == 1 && start > end))
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "secure link hmac: invalid time range");
+                    "auth hmac: invalid time range");
         goto not_found;
     }
 
@@ -271,7 +271,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
 
     if (value.len == 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "secure link hmac: time is empty");
+                    "auth hmac: time is empty");
         goto not_found;
     }
 
@@ -282,7 +282,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
 
         if (value.len < 4) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "secure link hmac: time len too short");
+                        "auth hmac: time len too short");
             goto not_found;
         }
 
@@ -307,7 +307,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         
         if (timestamp == (time_t) NGX_ERROR) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "secure link hmac: date conversion failed");
+                        "auth hmac: date conversion failed");
             goto not_found;
         }
 
@@ -316,7 +316,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
 
     if (timestamp <= 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "secure link hmac: timestamp must be positive num");
+                      "auth hmac: timestamp must be positive num");
         goto not_found;
     }
 
@@ -325,7 +325,7 @@ ngx_http_auth_hmac_variable(ngx_http_request_t *r,
         || (end_is_valid && (now > timestamp + end)))
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "secure link hmac: is not yet valid or has expired");
+                      "auth hmac: request not yet valid or expired");
         goto not_found;
     }
 
@@ -334,7 +334,7 @@ token:
     evp_md = EVP_get_digestbyname((const char*) conf->algorithm.data);
     if (evp_md == NULL) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "secure link hmac: unknown cryptographic "
+                       "auth hmac: unknown cryptographic "
                        "hash function \"%s\"", conf->algorithm.data);
 
         return NGX_ERROR;
@@ -349,14 +349,14 @@ token:
 
     if (value.len == 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "secure link hmac: token is empty");
+                      "auth hmac: token is empty");
         goto not_found;
     }
 
     if (conf->token_digest == NGX_HTTP_AUTH_HMAC_HEX) {
         if (ngx_http_auth_hmac_hex_decode(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "secure link hmac: token hex decode fail");
+                        "auth hmac: token hex decode fail");
             goto not_found;
         }
 
@@ -364,7 +364,7 @@ token:
 
         if (ngx_decode_base64(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "secure link hmac: token base64 decode fail");
+                        "auth hmac: token base64 decode fail");
             goto not_found;
         }
 
@@ -372,7 +372,7 @@ token:
 
         if (ngx_decode_base64url(&hash, &value) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "secure link hmac: token base64url decode fail");
+                        "auth hmac: token base64url decode fail");
             goto not_found;
         }
 
@@ -382,7 +382,7 @@ token:
 
     if (hash.len != (u_int) EVP_MD_size(evp_md)) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "secure link hmac: token len mismatch");
+                    "auth hmac: token len mismatch");
         goto not_found;
     }
 
@@ -391,7 +391,7 @@ token:
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "secure link hmac: message: \"%V\"", &value);
+                   "auth hmac: message: \"%V\"", &value);
 
     if (ngx_http_complex_value(r, conf->secret, &key) != NGX_OK) {
         return NGX_ERROR;
@@ -401,7 +401,7 @@ token:
 
     if (CRYPTO_memcmp(hash_buf, hmac_buf, EVP_MD_size(evp_md)) != 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "secure link hmac: token value mismatch");
+                      "auth hmac: token value mismatch");
         goto not_found;
     }
 
